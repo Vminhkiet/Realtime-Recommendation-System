@@ -1,0 +1,28 @@
+# --- 1. Simulation & Ingestion (Cho Producer) ---
+kafka-python==2.0.2       # Thư viện kết nối Kafka
+Faker==24.0.0             # Thư viện tạo dữ liệu giả (IP, Tên, Địa chỉ)
+
+# --- 2. Data Processing & Big Data (Cho Spark Dev) ---
+# Cài PySpark để code hỗ trợ nhắc lệnh (Intellisense) trên VS Code
+pyspark==3.5.1
+pandas>=2.2.3
+numpy==1.26.4
+pyarrow==15.0.2           # Hỗ trợ đọc/ghi file Parquet nhanh
+redis==5.0.1
+
+# --- 3. AI Core (Cho SASRec Model) ---
+# Hệ sinh thái Keras 3 & TensorFlow mới nhất
+tensorflow==2.19.0       # Backend tính toán
+scikit-learn==1.4.1.post1 # Dùng để chia tập train/test hoặc tính metrics
+keras-rs==0.3.0
+keras-hub==0.21.1
+
+# --- 4. Dashboard (Cho Serving Layer) ---
+# streamlit==1.32.2         # Framework làm Web App cực nhanh
+# plotly==5.20.0            # Vẽ biểu đồ tương tác đẹp hơn mặc định
+# altair==5.2.0             # Thư viện vẽ biểu đồ chuẩn của Streamlit
+
+# --- 5. Utilities (Tiện ích) ---
+# python-dotenv==1.0.1      # Đọc file .env
+# requests==2.31.0          # Gọi API (nếu cần)
+# tqdm==4.66.2              # Hiện thanh loading bar khi chạy vòng lặp

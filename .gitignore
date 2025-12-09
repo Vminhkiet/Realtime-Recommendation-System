@@ -1,0 +1,132 @@
+# ======================
+# 1. Python
+# ======================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pkl
+*.pickle
+*.h5
+*.keras
+*.joblib
+
+# Virtual env
+env/
+venv/
+.venv/
+
+# ======================
+# 2. Logs
+# ======================
+*.log
+logs/
+*.out
+*.err
+
+# ======================
+# 3. Kafka
+# ======================
+kafka-logs/
+zookeeper/
+meta.properties
+
+# ======================
+# 4. Spark
+# ======================
+derby.log
+spark-warehouse/
+metastore_db/
+*.crc
+*.snappy
+*.parquet
+
+# ======================
+# 5. MinIO / Data Lake
+# Không commit dữ liệu thật
+# ======================
+data/
+dataset/
+bronze/
+silver/
+gold/
+minio_data/
+
+# ======================
+# 6. Streamlit / Cache
+# ======================
+.streamlit/
+**/.streamlit/
+.streamlit/secrets.toml
+
+# ----------------------
+# 7. Jupyter Notebook
+# ----------------------
+.ipynb_checkpoints/
+*.nbconvert.ipynb
+*.ipynb~
+
+# ======================
+# 8. Docker
+# ======================
+# Bỏ build cache & volumes
+docker/*.pid
+docker-compose.override.yml
+.docker/
+docker-data/
+volumes/
+tmp/
+*.pid
+
+# Ignore build images
+build/
+dist/
+
+# ======================
+# 9. Node / Frontend (nếu có dashboard FE)
+# ======================
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# ======================
+# 10. OS / Editor
+# ======================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+desktop.ini
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# PyCharm
+.idea/
+
+# ======================
+# 11. Secrets & Credentials
+# ======================
+.env
+.env.local
+*.pem
+*.key
+*.crt
+
+# MinIO Keys
+minio_keys.txt
+
+# API keys, token
+token.json
+credentials.json
+
+# ======================
+# 12. Others
+# ======================
+*.tmp
+*.bak
