@@ -2,7 +2,7 @@ version: '3.9'
 
 services:
   # =========================================
-  # 1. HẠ TẦNG MESSAGING (KAFKA) - Giữ nguyên
+  # 1. HẠ TẦNG MESSAGING & GOVERNANCE
   # =========================================
   zookeeper:
     image: confluentinc/cp-zookeeper:7.3.0
@@ -31,6 +31,20 @@ services:
     networks:
       - spark-kafka-net
 
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.3.0
+    container_name: schema-registry
+    depends_on:
+      - kafka
+    ports:
+      - "9081:8081"
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: 'kafka:29092'
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+    networks:
+      - spark-kafka-net
+
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     container_name: kafka-ui
@@ -38,15 +52,58 @@ services:
       - "8080:8080"
     depends_on:
       - kafka
+      - schema-registry
     environment:
       KAFKA_CLUSTERS_0_NAME: local-kafka
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
-      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+      KAFKA_CLUSTERS_0_SCHEMAREGISTRY: http://schema-registry:8081
     networks:
       - spark-kafka-net
 
   # =========================================
-  # 2. HẠ TẦNG BỘ NHỚ & DATA LAKE - Giữ nguyên
+  # 2. HẠ TẦNG INTEGRATION (KAFKA CONNECT - CUSTOM BUILD)
+  # =========================================
+  kafka-connect:
+    build:
+      context: ./infra/kafka-connector
+      dockerfile: Dockerfile
+    container_name: kafka-connect
+    depends_on:
+      - kafka
+      - schema-registry
+    ports:
+      - "8083:8083"
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: "kafka:29092"
+      CONNECT_REST_ADVERTISED_HOST_NAME: "kafka-connect"
+      CONNECT_GROUP_ID: compose-connect-group
+
+      CONNECT_CONFIG_STORAGE_TOPIC: docker-connect-configs
+      CONNECT_OFFSET_STORAGE_TOPIC: docker-connect-offsets
+      CONNECT_STATUS_STORAGE_TOPIC: docker-connect-status
+
+      # 🔥 BẮT BUỘC THÊM 3 DÒNG NÀY
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
+
+      # Avro converter
+      CONNECT_KEY_CONVERTER: io.confluent.connect.avro.AvroConverter
+      CONNECT_KEY_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      CONNECT_VALUE_CONVERTER: io.confluent.connect.avro.AvroConverter
+      CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+
+      CONNECT_INTERNAL_KEY_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+      CONNECT_INTERNAL_VALUE_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+
+      CONNECT_REST_PORT: 8083
+
+      CONNECT_PLUGIN_PATH: "/usr/share/java,/usr/share/confluent-hub-components"
+    networks:
+      - spark-kafka-net
+
+  # =========================================
+  # 3. HẠ TẦNG LƯU TRỮ (STORAGE LAYER)
   # =========================================
   redis:
     image: redis:latest
@@ -73,20 +130,41 @@ services:
     networks:
       - spark-kafka-net
 
+  mongo:
+    image: mongo:latest
+    container_name: mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - ./data/mongo_data:/data/db
+    networks:
+      - spark-kafka-net
+
+  timescaledb:
+    image: timescale/timescaledb:latest-pg14
+    container_name: timescaledb
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=ecommerce_logs
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./data/timescale_data:/var/lib/postgresql/data
+    networks:
+      - spark-kafka-net
+
   # =========================================
-  # 3. SPARK CLUSTER (DÙNG ALEX MERCED CHO TẤT CẢ)
+  # 4. SPARK CLUSTER
   # =========================================
-  
-  # --- SPARK MASTER ---
   spark-master:
     build: ./base
     container_name: spark-master
-    user: root # Chạy root để không bị lỗi quyền ghi file
-    # Lệnh ghi đè để biến nó thành Master thay vì Notebook
+    user: root
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
     ports:
-      - "8081:8080" # Web UI của Master
-      - "7077:7077" # Port nhận Job
+      - "8081:8080"
+      - "7077:7077"
     volumes:
       - ./src:/home/spark/work/src
       - ./data:/home/spark/work/data
@@ -124,6 +202,9 @@ services:
     networks:
       - spark-kafka-net
 
+  # =========================================
+  # 5. SERVING LAYER
+  # =========================================
   dashboard:
     build: ./base
     container_name: dashboard
@@ -136,10 +217,15 @@ services:
     working_dir: /home/spark/work
     environment:
       - KAFKA_SERVER=kafka:29092
-      - META_FILE_PATH=data/raw_source/meta_All_Beauty.jsonl
-    command: streamlit run src/dashboard/app.py --server.port 8501 --server.address 0.0.0.0
+      # Kết nối DB để lấy dữ liệu
+      - MONGO_URI=mongodb://mongo:27017/
+      - TIMESCALE_URI=postgresql://postgres:password@timescaledb:5432/ecommerce_logs
+    command: >
+      bash -c "pip install pymongo psycopg2-binary && 
+               streamlit run src/dashboard/app.py --server.port 8501 --server.address 0.0.0.0"
     networks:
       - spark-kafka-net
+
 networks:
   spark-kafka-net:
     driver: bridge

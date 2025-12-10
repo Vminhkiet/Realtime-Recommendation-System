@@ -14,8 +14,10 @@ redis==5.0.1
 # Hệ sinh thái Keras 3 & TensorFlow mới nhất
 tensorflow==2.19.0       # Backend tính toán
 scikit-learn==1.4.1.post1 # Dùng để chia tập train/test hoặc tính metrics
-keras-rs==0.3.0
+keras-rs==0.2.1
 keras-hub==0.21.1
+
+pymongo==4.7.1
 
 # --- 4. Dashboard (Cho Serving Layer) ---
 # streamlit==1.32.2         # Framework làm Web App cực nhanh
