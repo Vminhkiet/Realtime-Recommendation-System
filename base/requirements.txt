@@ -19,12 +19,13 @@ keras-hub==0.21.1
 
 pymongo==4.7.1
 
+
 # --- 4. Dashboard (Cho Serving Layer) ---
-# streamlit==1.32.2         # Framework làm Web App cực nhanh
-# plotly==5.20.0            # Vẽ biểu đồ tương tác đẹp hơn mặc định
-# altair==5.2.0             # Thư viện vẽ biểu đồ chuẩn của Streamlit
+streamlit==1.32.2         # Framework làm Web App cực nhanh
+plotly==5.20.0            # Vẽ biểu đồ tương tác đẹp hơn mặc định
+altair==5.2.0             # Thư viện vẽ biểu đồ chuẩn của Streamlit
 
 # --- 5. Utilities (Tiện ích) ---
-# python-dotenv==1.0.1      # Đọc file .env
-# requests==2.31.0          # Gọi API (nếu cần)
-# tqdm==4.66.2              # Hiện thanh loading bar khi chạy vòng lặp
+python-dotenv==1.0.1      # Đọc file .env
+requests==2.31.0          # Gọi API (nếu cần)
+tqdm==4.66.2              # Hiện thanh loading bar khi chạy vòng lặp

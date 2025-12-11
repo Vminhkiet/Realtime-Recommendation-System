@@ -2,6 +2,7 @@ import json
 import time
 import uuid
 import random
+import os  # <--- [THAY ĐỔI 1] Thêm thư viện os để đọc biến môi trường
 from datetime import datetime
 from kafka import KafkaProducer
 from faker import Faker
@@ -10,7 +11,10 @@ from faker import Faker
 # Đường dẫn tương đối từ thư mục chạy lệnh (root folder)
 INPUT_FILE = 'data/raw_source/All_Beauty.jsonl' 
 KAFKA_TOPIC = 'user_clicks'
-BOOTSTRAP_SERVERS = 'localhost:9092' # Địa chỉ Kafka trong Docker
+
+# [THAY ĐỔI 2] Đọc từ biến môi trường, nếu không có thì mới dùng localhost
+# Khi chạy qua Makefile, nó sẽ nhận giá trị 'kafka:29092'
+BOOTSTRAP_SERVERS = os.getenv('KAFKA_SERVER', 'localhost:9092')
 
 # Cấu hình giả lập (Augmentation Config)
 fake = Faker('vi_VN') # Fake thông tin Việt Nam
@@ -55,16 +59,16 @@ def augment_data(rating):
     return event, device, location, ip
 
 def main():
-    print("⏳ Đang kết nối tới Kafka...")
+    print(f"⏳ Đang kết nối tới Kafka tại: {BOOTSTRAP_SERVERS}...")
     try:
         producer = KafkaProducer(
             bootstrap_servers=BOOTSTRAP_SERVERS,
             value_serializer=lambda v: json.dumps(v).encode('utf-8')
         )
-        print(f"✅ Kết nối Kafka thành công tại {BOOTSTRAP_SERVERS}")
+        print(f"✅ Kết nối Kafka thành công!")
     except Exception as e:
         print(f"❌ Lỗi kết nối Kafka: {e}")
-        print("💡 Gợi ý: Bạn đã chạy 'docker-compose up' chưa?")
+        print("💡 Gợi ý: Bạn đã chạy 'docker-compose up' chưa? Hoặc sai địa chỉ Kafka.")
         return
 
     print(f"🚀 Đang đọc file: {INPUT_FILE}")
@@ -82,7 +86,6 @@ def main():
                     if not user_id: continue
 
                     # 2. Chia nhỏ / Tạo Session (Sessionization)
-                    # Giả lập mỗi event là một phần của 1 session mới
                     session_id = str(uuid.uuid4())
 
                     # 3. Làm giàu (Augmentation)

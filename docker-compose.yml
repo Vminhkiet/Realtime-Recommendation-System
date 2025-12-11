@@ -131,7 +131,7 @@ services:
       - spark-kafka-net
 
   mongo:
-    image: mongo:latest
+    image: mongo:4.4.6
     container_name: mongo
     ports:
       - "27017:27017"
@@ -206,7 +206,7 @@ services:
   # 5. SERVING LAYER
   # =========================================
   dashboard:
-    build: ./base
+    build: ./base  # (Hoặc ./infra/spark-base tùy vào thư mục bạn tạo)
     container_name: dashboard
     user: root
     ports:
@@ -217,12 +217,10 @@ services:
     working_dir: /home/spark/work
     environment:
       - KAFKA_SERVER=kafka:29092
-      # Kết nối DB để lấy dữ liệu
       - MONGO_URI=mongodb://mongo:27017/
       - TIMESCALE_URI=postgresql://postgres:password@timescaledb:5432/ecommerce_logs
-    command: >
-      bash -c "pip install pymongo psycopg2-binary && 
-               streamlit run src/dashboard/app.py --server.port 8501 --server.address 0.0.0.0"
+    # --- SỬA DÒNG NÀY ---
+    command: streamlit run src/dashboard/app.py --server.port 8501 --server.address 0.0.0.0
     networks:
       - spark-kafka-net
 
