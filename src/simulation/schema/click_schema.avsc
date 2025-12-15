@@ -1,0 +1,23 @@
+{
+  "namespace": "ecommerce.tracking",
+  "type": "record",
+  "name": "UserClick",
+  "fields": [
+    {"name": "event_id", "type": "string"},
+    {"name": "session_id", "type": "string"},
+    {"name": "user_id", "type": "string"},
+    {"name": "item_id", "type": "string"},
+    {"name": "event_type", "type": "string"},
+    {"name": "rating_original", "type": "float"},
+    {"name": "timestamp", "type": "string"},
+    {"name": "context", "type": {
+        "type": "record",
+        "name": "ContextData",
+        "fields": [
+            {"name": "device", "type": "string"},
+            {"name": "location", "type": "string"},
+            {"name": "ip", "type": "string"}
+        ]
+    }}
+  ]
+}

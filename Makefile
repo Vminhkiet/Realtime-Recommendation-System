@@ -91,10 +91,37 @@ test-ai:
 # ==============================================================================
 
 ## Setup toàn bộ (Metadata -> TimescaleDB -> Connectors)
+# setup:
+# 	@echo "${YELLOW}--- 1. Importing Metadata to MongoDB ---${RESET}"
+# 	# Nạp thông tin sản phẩm (Tên, Giá, Ảnh) vào MongoDB
+# 	docker exec -it -w /home/spark/work $(SPARK_MASTER) python3 src/utils/init_mongo.py
+
+# 	@echo "\n${YELLOW}--- 2. Creating TimescaleDB Hypertable ---${RESET}"
+# 	# Tạo bảng lưu log hành vi người dùng trong TimescaleDB
+# 	docker exec -i timescaledb psql -U postgres -d ecommerce_logs -c "\
+# 		CREATE TABLE IF NOT EXISTS user_activity ( \
+# 			time TIMESTAMPTZ NOT NULL, \
+# 			user_id TEXT, \
+# 			item_id TEXT, \
+# 			action_type TEXT, \
+# 			device TEXT \
+# 		); \
+# 		SELECT create_hypertable('user_activity', 'time', if_not_exists => TRUE);" || true
+
+# 	@echo "\n${YELLOW}--- 3. Registering Kafka Connectors ---${RESET}"
+# 	# Đăng ký Connector (JSON viết 1 dòng để tránh lỗi Makefile)
+# 	@echo "Waiting for Kafka Connect to be ready..."
+# 	@sleep 5
+# 	@curl -s -X POST http://$(CONNECT_HOST):$(CONNECT_PORT)/connectors \
+# 		-H "Content-Type: application/json" \
+# 		-d '{"name": "timescale-sink", "config": {"connector.class": "io.confluent.connect.jdbc.JdbcSinkConnector", "tasks.max": "1", "topics": "user_clicks", "connection.url": "jdbc:postgresql://timescaledb:5432/ecommerce_logs", "connection.user": "postgres", "connection.password": "password", "auto.create": "true", "insert.mode": "insert"}}' || echo "Connector might already exist."
+# 	@echo "\n${GREEN}Setup Completed!${RESET}"
+
 setup:
 	@echo "${YELLOW}--- 1. Importing Metadata to MongoDB ---${RESET}"
 	# Nạp thông tin sản phẩm (Tên, Giá, Ảnh) vào MongoDB
-	docker exec -it -w /home/spark/work $(SPARK_MASTER) python3 src/utils/init_mongo.py
+	#docker exec -it -w /home/spark/work $(SPARK_MASTER) python3 src/utils/init_mongo.py
+	docker exec -it -w /home/spark/work $(SPARK_MASTER) python3 src/utils/init_mongo_meta.py
 
 	@echo "\n${YELLOW}--- 2. Creating TimescaleDB Hypertable ---${RESET}"
 	# Tạo bảng lưu log hành vi người dùng trong TimescaleDB
@@ -108,13 +135,17 @@ setup:
 		); \
 		SELECT create_hypertable('user_activity', 'time', if_not_exists => TRUE);" || true
 
-	@echo "\n${YELLOW}--- 3. Registering Kafka Connectors ---${RESET}"
-	# Đăng ký Connector (JSON viết 1 dòng để tránh lỗi Makefile)
+	@echo "\n${YELLOW}--- 3. Registering Kafka Connectors (AVRO MODE) ---${RESET}"
+	# Xóa connector cũ nếu có để tránh xung đột
+	@curl -s -X DELETE http://$(CONNECT_HOST):$(CONNECT_PORT)/connectors/timescale-sink || true
+	@curl -s -X DELETE http://$(CONNECT_HOST):$(CONNECT_PORT)/connectors/timescale-sink-avro || true
+	
 	@echo "Waiting for Kafka Connect to be ready..."
 	@sleep 5
+	# [QUAN TRỌNG] JSON bên dưới đã được viết thành 1 dòng để tránh lỗi Makefile
 	@curl -s -X POST http://$(CONNECT_HOST):$(CONNECT_PORT)/connectors \
 		-H "Content-Type: application/json" \
-		-d '{"name": "timescale-sink", "config": {"connector.class": "io.confluent.connect.jdbc.JdbcSinkConnector", "tasks.max": "1", "topics": "user_clicks", "connection.url": "jdbc:postgresql://timescaledb:5432/ecommerce_logs", "connection.user": "postgres", "connection.password": "password", "auto.create": "true", "insert.mode": "insert"}}' || echo "Connector might already exist."
+		-d '{"name": "timescale-sink-avro", "config": {"connector.class": "io.confluent.connect.jdbc.JdbcSinkConnector", "tasks.max": "1", "topics": "user_clicks", "connection.url": "jdbc:postgresql://timescaledb:5432/ecommerce_logs", "connection.user": "postgres", "connection.password": "password", "auto.create": "true", "insert.mode": "insert", "key.converter": "org.apache.kafka.connect.storage.StringConverter", "value.converter": "io.confluent.connect.avro.AvroConverter", "value.converter.schema.registry.url": "http://schema-registry:8081"}}' || echo "Connector setup failed."
 	@echo "\n${GREEN}Setup Completed!${RESET}"
 
 # ==============================================================================
@@ -125,17 +156,17 @@ setup:
 sim:
 	@echo "${YELLOW}Running Simulation inside Docker...${RESET}"
 	# Chạy producer với biến môi trường Kafka nội bộ
+# 	docker exec -it -w /home/spark/work -e KAFKA_SERVER=kafka:29092 $(SPARK_MASTER) python3 src/simulation/main_producer.py
+	docker exec -it spark-master pip install confluent-kafka fastavro requests Faker authlib
 	docker exec -it -w /home/spark/work -e KAFKA_SERVER=kafka:29092 $(SPARK_MASTER) python3 src/simulation/main_producer.py
 
 ## Terminal 2: Chạy Spark Streaming (AI Inference Real-time)
 stream:
 	@echo "${YELLOW}Submitting Spark Streaming Job...${RESET}"
-	# Submit job Spark để đọc Kafka và gọi Model AI
 	docker exec -it -w /home/spark/work $(SPARK_MASTER) spark-submit \
-		--packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1 \
+		--packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1,org.apache.spark:spark-avro_2.12:3.5.1 \
 		--py-files /home/spark/work/src/processing/streaming/utils.py,/home/spark/work/src/ai_core/model.py \
 		/home/spark/work/src/processing/streaming/inference.py
-
 ## Dọn dẹp dữ liệu rác (CẨN THẬN: Xóa sạch Database)
 clean-data: down
 	@echo "${YELLOW}Cleaning all data volumes...${RESET}"

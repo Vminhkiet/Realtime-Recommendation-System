@@ -4,93 +4,76 @@ from pymongo import MongoClient
 from pymongo.errors import BulkWriteError
 
 # --- CẤU HÌNH ---
-# Nếu chạy qua Docker (Make setup) thì host là 'mongo'
-# Nếu chạy ngoài thì dùng localhost
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://mongo:27017/")
-
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
 DB_NAME = "ecommerce_db"
-COLLECTION_NAME = "products"
+REVIEW_COLLECTION = "reviews" # Collection riêng cho review
 
-META_FILE_PATH = "data/raw_source/meta_All_Beauty.jsonl"
+# Đổi đường dẫn này tới file chứa Review của bạn
+REVIEW_FILE_PATH = "data/raw_source/All_Beauty.jsonl" 
 
-
-def load_data():
-    # Kết nối MongoDB
+def load_reviews():
     try:
         client = MongoClient(MONGO_URI)
         db = client[DB_NAME]
-        col = db[COLLECTION_NAME]
-        print(f"🔌 Đã kết nối MongoDB: {DB_NAME}.{COLLECTION_NAME}")
+        col = db[REVIEW_COLLECTION]
+        print(f"🔌 Đã kết nối MongoDB: {DB_NAME}.{REVIEW_COLLECTION}")
     except Exception as e:
         print(f"❌ Lỗi kết nối MongoDB: {e}")
         return
 
-    # Index
-    print("🛠 Đang tạo Index...")
-    col.create_index("asin", unique=True)
-    col.create_index("parent_asin")
+    # --- TẠO INDEX (Rất quan trọng cho tốc độ) ---
+    print("🛠 Đang tạo Index cho Reviews...")
+    
+    # 1. Index hỗ trợ lấy lịch sử user theo thời gian (Cho AI SASRec)
+    col.create_index([("user_id", 1), ("timestamp", 1)])
+    
+    # 2. Index hỗ trợ hiển thị review ở trang chi tiết sản phẩm (Sort theo hữu ích)
+    col.create_index([("parent_asin", 1), ("helpful_vote", -1)])
 
-    # Kiểm tra file
-    if not os.path.exists(META_FILE_PATH):
-        print(f"❌ Không tìm thấy file: {META_FILE_PATH}")
+    if not os.path.exists(REVIEW_FILE_PATH):
+        print(f"❌ Không tìm thấy file: {REVIEW_FILE_PATH}")
         return
 
-    print(f"🚀 Bắt đầu nạp dữ liệu từ: {META_FILE_PATH}")
+    print(f"🚀 Bắt đầu nạp Reviews từ: {REVIEW_FILE_PATH}")
 
     batch_data = []
-    BATCH_SIZE = 1000
+    BATCH_SIZE = 2000 # Review nhẹ hơn metadata, có thể tăng batch
     count = 0
 
-    with open(META_FILE_PATH, "r") as f:
+    with open(REVIEW_FILE_PATH, "r") as f:
         for line in f:
             try:
                 item = json.loads(line)
             except json.JSONDecodeError:
                 continue
 
-            # Lấy asin / parent_asin
+            # Lấy các trường quan trọng
+            user_id = item.get("user_id")
             p_asin = item.get("parent_asin")
-            asin = item.get("asin") or p_asin
-            if not asin:
+            
+            # Bỏ qua nếu dữ liệu lỗi
+            if not user_id or not p_asin:
                 continue
 
-            # Ảnh (ưu tiên ảnh nét nhất)
-            image_url = "https://via.placeholder.com/150"
+            # Xử lý images (MongoDB lưu list object rất tốt)
+            # Dữ liệu gốc thường là list các dict: [{'small_image_url': '...', ...}]
+            images = item.get("images", []) 
 
-            if item.get("images"):
-                first_img = item["images"][0]
-                image_url = (
-                    first_img.get("hi_res")
-                    or first_img.get("large")
-                    or first_img.get("thumb")
-                    or image_url
-                )
-
-            # Giá
-            try:
-                price = float(item.get("price")) if item.get("price") else 0.0
-            except:
-                price = 0.0
-
-            # Đóng gói dữ liệu
+            # Đóng gói document
             doc = {
-                "asin": asin,
+                "user_id": user_id,
                 "parent_asin": p_asin,
-                "title": item.get("title", "Unknown Product"),
-                "main_category": item.get("main_category", "Uncategorized"),
-
-                "price": price,
-                "image": image_url,
-                "store": item.get("store", "Unknown Brand"),
-                "average_rating": item.get("average_rating", 0.0),
-                "rating_number": item.get("rating_number", 0),
-
-                "features": item.get("features", []),
-                "description": item.get("description", []),
-                "details": item.get("details", {}),
-                "categories": item.get("categories", []),
-                "videos": item.get("videos", []),
-                "bought_together": item.get("bought_together", []),
+                "asin": item.get("asin"), # Variant ID
+                
+                "title": item.get("title", ""),
+                "text": item.get("text", ""),
+                "rating": float(item.get("rating", 0.0)),
+                
+                "timestamp": item.get("timestamp"), # Unix timestamp (int)
+                "verified_purchase": item.get("verified_purchase", False),
+                "helpful_vote": int(item.get("helpful_vote", 0)),
+                
+                "images": images # Lưu nguyên mảng images vào đây
             }
 
             batch_data.append(doc)
@@ -100,13 +83,12 @@ def load_data():
                 try:
                     col.insert_many(batch_data, ordered=False)
                     count += len(batch_data)
-                    print(f"✅ Đã nạp {count} sản phẩm...", end="\r")
+                    print(f"✅ Đã nạp {count} reviews...", end="\r")
                 except BulkWriteError:
-                    pass
-
+                    pass # Bỏ qua lỗi trùng lặp (nếu có)
                 batch_data = []
 
-    # Insert phần dư cuối cùng
+    # Insert phần dư cuối
     if batch_data:
         try:
             col.insert_many(batch_data, ordered=False)
@@ -114,10 +96,8 @@ def load_data():
         except BulkWriteError:
             pass
 
-    print(f"\n🎉 HOÀN TẤT! Tổng cộng {count} sản phẩm đã vào MongoDB.")
-
+    print(f"\n🎉 HOÀN TẤT! Tổng cộng {count} reviews đã vào MongoDB.")
     client.close()
 
-
 if __name__ == "__main__":
-    load_data()
+    load_reviews()

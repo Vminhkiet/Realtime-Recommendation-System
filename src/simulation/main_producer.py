@@ -2,56 +2,40 @@ import json
 import time
 import uuid
 import random
-import os  # <--- [THAY ĐỔI 1] Thêm thư viện os để đọc biến môi trường
-from datetime import datetime
+import os
+from datetime import datetime # <--- Dùng cái này để tạo giờ chuẩn
 from kafka import KafkaProducer
 from faker import Faker
 
 # --- 1. CẤU HÌNH (CONFIG) ---
-# Đường dẫn tương đối từ thư mục chạy lệnh (root folder)
 INPUT_FILE = 'data/raw_source/All_Beauty.jsonl' 
 KAFKA_TOPIC = 'user_clicks'
 
-# [THAY ĐỔI 2] Đọc từ biến môi trường, nếu không có thì mới dùng localhost
-# Khi chạy qua Makefile, nó sẽ nhận giá trị 'kafka:29092'
+# Đọc từ biến môi trường
 BOOTSTRAP_SERVERS = os.getenv('KAFKA_SERVER', 'localhost:9092')
 
-# Cấu hình giả lập (Augmentation Config)
-fake = Faker('vi_VN') # Fake thông tin Việt Nam
+# Cấu hình giả lập
+fake = Faker('vi_VN') 
 DEVICES = ['iPhone 14', 'Samsung S23', 'Macbook Air', 'Windows PC', 'iPad']
 LOCATIONS = ['Ho Chi Minh', 'Ha Noi', 'Da Nang', 'Can Tho', 'Hai Phong']
-BROWSERS = ['Chrome', 'Safari', 'Firefox', 'Edge']
 
 def normalize_data(raw_data):
-    """
-    NHIỆM VỤ: Chuẩn hóa dữ liệu đầu vào, xử lý null, ép kiểu.
-    """
     try:
         rating = float(raw_data.get('rating', 0.0))
-        
-        # Xử lý trường hợp file dùng 'reviewerID' hoặc 'user_id'
         user_id = raw_data.get('user_id') or raw_data.get('reviewerID')
         if not user_id:
-            return None, None, None # Bỏ qua dòng lỗi
-            
+            return None, None, None
         item_id = raw_data.get('asin') or raw_data.get('parent_asin', "unknown")
-        
         return user_id, item_id, rating
     except Exception:
         return None, None, None
 
 def augment_data(rating):
-    """
-    NHIỆM VỤ: Làm giàu dữ liệu (Data Augmentation)
-    Biến đổi Rating tĩnh -> Hành vi động & Ngữ cảnh
-    """
-    # 1. Biến đổi hành vi (Transformation)
     if rating >= 5.0: event = 'purchase'
     elif rating >= 4.0: event = 'add_to_cart'
     elif rating >= 3.0: event = 'view'
     else: event = 'skip'
 
-    # 2. Thêm ngữ cảnh giả lập (Enrichment)
     device = random.choice(DEVICES)
     location = random.choice(LOCATIONS)
     ip = fake.ipv4()
@@ -68,7 +52,6 @@ def main():
         print(f"✅ Kết nối Kafka thành công!")
     except Exception as e:
         print(f"❌ Lỗi kết nối Kafka: {e}")
-        print("💡 Gợi ý: Bạn đã chạy 'docker-compose up' chưa? Hoặc sai địa chỉ Kafka.")
         return
 
     print(f"🚀 Đang đọc file: {INPUT_FILE}")
@@ -79,22 +62,21 @@ def main():
                 try:
                     raw_record = json.loads(line)
                     
-                    # --- GIAI ĐOẠN XỬ LÝ (PRE-PROCESSING) ---
-                    
                     # 1. Chuẩn hóa
                     user_id, item_id, rating = normalize_data(raw_record)
                     if not user_id: continue
 
-                    # 2. Chia nhỏ / Tạo Session (Sessionization)
+                    # 2. Session
                     session_id = str(uuid.uuid4())
 
-                    # 3. Làm giàu (Augmentation)
+                    # 3. Augmentation
                     event_type, device, location, ip = augment_data(rating)
 
-                    # 4. Ghi log thời gian thực (Time Shifting)
-                    current_ts = int(time.time() * 1000)
+                    # [SỬA QUAN TRỌNG] Đổi timestamp sang String ISO 8601
+                    # Database chỉ hiểu định dạng này, không hiểu số int
+                    current_ts = datetime.utcnow().isoformat() 
 
-                    # --- ĐÓNG GÓI BẢN TIN (FINAL PAYLOAD) ---
+                    # 4. Payload
                     message = {
                         "event_id": str(uuid.uuid4()),
                         "session_id": session_id,
@@ -102,7 +84,7 @@ def main():
                         "item_id": item_id,
                         "event_type": event_type,
                         "rating_original": rating,
-                        "timestamp": current_ts, # Quan trọng cho Real-time
+                        "timestamp": current_ts, # <--- Đã sửa thành String
                         "context": {
                             "device": device,
                             "location": location,
@@ -113,10 +95,9 @@ def main():
                     # Gửi vào Kafka
                     producer.send(KAFKA_TOPIC, message)
                     
-                    # Log ra màn hình để demo
                     print(f"✅ Sent: {user_id[:10]}... | {event_type.upper()} | {location}")
                     
-                    # Giả lập độ trễ (Sleep) để giống người thật đang click
+                    # Giả lập độ trễ
                     time.sleep(random.uniform(0.1, 0.5))
 
                 except json.JSONDecodeError:
@@ -124,7 +105,6 @@ def main():
                     
     except FileNotFoundError:
         print(f"❌ Không tìm thấy file: {INPUT_FILE}")
-        print("💡 Hãy tải file Amazon về và bỏ vào thư mục data/raw_source/")
 
 if __name__ == "__main__":
     main()

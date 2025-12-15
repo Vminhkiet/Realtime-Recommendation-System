@@ -29,3 +29,19 @@ altair==5.2.0             # Thư viện vẽ biểu đồ chuẩn của Streamli
 python-dotenv==1.0.1      # Đọc file .env
 requests==2.31.0          # Gọi API (nếu cần)
 tqdm==4.66.2              # Hiện thanh loading bar khi chạy vòng lặp
+
+# --- 6. Database Drivers (BẮT BUỘC CHO DASHBOARD) ---
+# Để Dashboard kết nối được với TimescaleDB (PostgreSQL)
+psycopg2-binary==2.9.9
+SQLAlchemy==2.0.28        # Hỗ trợ pandas đọc SQL xịn hơn
+
+# --- 7. Data Analysis & Visualization (Cho inspect_data.py) ---
+# Để chạy file kiểm tra dữ liệu và vẽ biểu đồ phân bố rating
+matplotlib==3.8.3
+seaborn==0.13.2
+
+# --- 8. Avro & Schema Registry (Cho Nâng cao) ---
+# Nếu bạn muốn chuyển sang dùng Avro như đã hỏi
+confluent-kafka==2.3.0    # Client Kafka xịn hơn kafka-python (hỗ trợ Avro tốt)
+fastavro==1.9.4           # Xử lý file Avro siêu tốc
+avro==1.11.3              # Thư viện chuẩn
