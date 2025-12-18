@@ -220,7 +220,9 @@ services:
       - MONGO_URI=mongodb://mongo:27017/
       - TIMESCALE_URI=postgresql://postgres:password@timescaledb:5432/ecommerce_logs
     # --- SỬA DÒNG NÀY ---
-    command: streamlit run src/dashboard/app.py --server.port 8501 --server.address 0.0.0.0
+    command: >
+      bash -c "pip install streamlit pandas matplotlib && 
+      streamlit run src/dashboard/app.py --server.port 8501 --server.address 0.0.0.0"
     networks:
       - spark-kafka-net
 

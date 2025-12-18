@@ -1,80 +1,121 @@
 import os
+import json
 import pickle
-import numpy as np
 import tensorflow as tf
-import keras
-from model import SasRec  # Bắt buộc phải import class này để Keras hiểu model
+import numpy as np
+import random
 
-# --- CẤU HÌNH ĐƯỜNG DẪN TUYỆT ĐỐI ---
+# --- CẤU HÌNH ---
+# Import class SasRec từ file model.py cùng thư mục
+try:
+    from .model import SasRec
+except ImportError:
+    from model import SasRec
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(os.path.dirname(BASE_DIR))
 
+# Load các file tài nguyên đã train
 MODEL_PATH = os.path.join(PROJECT_ROOT, 'data/model_registry/sasrec_v1.keras')
-MAP_PATH = os.path.join(PROJECT_ROOT, 'data/model_registry/item_map.pkl')
+MAP_PATH = os.path.join(PROJECT_ROOT, 'data/model_registry/item_map.json')
+TEST_SET_PATH = os.path.join(PROJECT_ROOT, 'data/model_registry/test_set.pkl')
+
 MAX_LEN = 50
 
-def test_inference():
-    print("🔄 Đang load tài nguyên...")
+def main():
+    print("🧪 BẮT ĐẦU KIỂM TRA MODEL (OFFLINE SANITY CHECK)...")
     
-    # 1. Load Dictionary (Để dịch Số -> Tên sản phẩm)
-    if not os.path.exists(MAP_PATH):
-        print(f"❌ Lỗi: Không tìm thấy file map tại {MAP_PATH}")
-        return
-
-    with open(MAP_PATH, 'rb') as f:
-        # Lúc tạo file data_process.py, ta đã lưu (item2id, id2item)
-        item2id, id2item = pickle.load(f)
-        
-    print(f"✅ Đã load map. Tổng sản phẩm: {len(item2id)}")
-
-    # 2. Load Model
+    # 1. Kiểm tra file tồn tại
     if not os.path.exists(MODEL_PATH):
         print(f"❌ Lỗi: Không tìm thấy model tại {MODEL_PATH}")
+        print("   -> Bạn đã chạy 'make train' chưa?")
         return
 
+    # 2. Load Resources
+    print("📥 Đang load Model & Map...")
     try:
-        # Load model .keras (Keras tự động nhận diện class SasRec nhờ decorator @serializable)
         model = tf.keras.models.load_model(MODEL_PATH)
-        print("✅ Đã load Model thành công!")
+        
+        with open(MAP_PATH, 'r') as f:
+            id2item = {int(k): v for k, v in json.load(f).items()}
+            
+        with open(TEST_SET_PATH, 'rb') as f:
+            test_set = pickle.load(f)
+            
+        print(f"✅ Load xong. Vocab size: {len(id2item)}")
     except Exception as e:
-        print(f"❌ Lỗi load model: {e}")
+        print(f"❌ Lỗi load tài nguyên: {e}")
         return
 
-    # 3. Giả lập Input (User vừa xem 3 món hàng)
-    print("\n🧪 --- BẮT ĐẦU TEST DỰ ĐOÁN ---")
+    # 3. Lấy ngẫu nhiên 1 mẫu trong tập Test để thử
+    if not test_set:
+        print("❌ Tập test rỗng!")
+        return
+        
+    sample = random.choice(test_set)
     
-    # Lấy 3 món hàng bất kỳ có thật trong từ điển để test
-    # (Lấy ID số 100, 101, 102 chẳng hạn)
-    history_items = [100, 101, 102] 
-    
-    print(f"Input (User đã xem): {history_items}")
-    print(f"Tên sản phẩm gốc: {[id2item.get(i, 'Unknown') for i in history_items]}")
+    # 🔥 CẬP NHẬT: Lấy cả Item và Category từ mẫu test mới
+    # (Cấu trúc mới trong train_model.py là 'input_items' và 'input_cats')
+    try:
+        history_items = sample['input_items']
+        history_cats = sample['input_cats']
+        truth = sample['label']
+    except KeyError:
+        print("❌ Lỗi format data: File test_set.pkl có vẻ là phiên bản cũ.")
+        print("👉 Hãy chạy lại 'make train-ai' để sinh file test mới nhất.")
+        return
 
-    # 4. Tiền xử lý (Preprocessing) - Giống hệt lúc Train
-    # Padding (Thêm số 0 vào sau cho đủ 50)
+    print("\n-------------------------------------------------")
+    print(f"👤 USER HISTORY (5 món gần nhất):")
+    # Chỉ hiển thị tên Item (Category để model dùng ngầm bên dưới)
+    for item_id in history_items[-5:]:
+        print(f"   - {id2item.get(item_id, 'Unknown')}")
+        
+    truth_name = id2item.get(truth, 'Unknown')
+    print(f"\n🎯 GROUND TRUTH (Thực tế mua): {truth_name} (ID: {truth})")
+    
+    # 4. Dự đoán (Inference)
+    # Preprocessing
     pad_len = MAX_LEN - len(history_items)
-    input_ids = history_items + [0] * pad_len
     
-    # Masking (True cho item thật, False cho số 0)
+    # Padding cho cả Item và Category
+    input_ids = list(history_items) + [0] * pad_len
+    cat_ids = list(history_cats) + [0] * pad_len # 🔥 Padding Category
     mask = [True] * len(history_items) + [False] * pad_len
-
-    # Chuyển thành Tensor
-    input_tensor = {
-        "item_ids": tf.constant([input_ids]),       # Shape (1, 50)
-        "padding_mask": tf.constant([mask])         # Shape (1, 50)
+    
+    # Tạo input dictionary đúng chuẩn Model mới
+    inp = {
+        "item_ids": tf.constant([input_ids]),
+        "category_ids": tf.constant([cat_ids]), # 🔥 Thêm input này
+        "padding_mask": tf.constant([mask])
     }
+    
+    # Predict
+    print("\n🤖 MODEL PREDICTION (Top 10):")
+    try:
+        output = model.predict(inp, verbose=0)
+        top_k_indices = output['predictions'][0]
+        
+        found = False
+        for rank, idx in enumerate(top_k_indices):
+            idx = int(idx)
+            name = id2item.get(idx, f"Unknown_ID_{idx}")
+            
+            is_correct = (idx == truth)
+            mark = "✅ CHÍNH XÁC!" if is_correct else ""
+            if is_correct: found = True
+            
+            print(f"   #{rank+1}: {name} {mark}")
 
-    # 5. Gọi Model dự đoán
-    # Model sẽ trả về dictionary chứa "predictions" (Top-K indices)
-    output = model.predict(input_tensor, verbose=0)
-    top_k_indices = output['predictions'][0] # Lấy kết quả của user đầu tiên
-
-    # 6. Giải mã kết quả (Decoding)
-    print("\n🎯 KẾT QUẢ GỢI Ý (TOP 10):")
-    for rank, idx in enumerate(top_k_indices):
-        item_id = int(idx)
-        item_name = id2item.get(item_id, f"Unknown_ID_{item_id}")
-        print(f"  #{rank+1}: {item_name} (ID: {item_id})")
+        print("-------------------------------------------------")
+        if found:
+            print("🎉 KẾT QUẢ: Model dự đoán ĐÚNG!")
+        else:
+            print("⚠️ KẾT QUẢ: Model dự đoán SAI (Cần train thêm hoặc chỉnh tham số).")
+            
+    except Exception as e:
+        print(f"❌ Lỗi khi Predict: {e}")
+        print("💡 Gợi ý: Kiểm tra xem Model đã được build với Category Embedding chưa?")
 
 if __name__ == "__main__":
-    test_inference()
+    main()

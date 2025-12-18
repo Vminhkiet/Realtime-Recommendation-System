@@ -66,26 +66,42 @@ logs:
 # 🧠 2. QUY TRÌNH HUẤN LUYỆN AI (AI PIPELINE)
 # ==============================================================================
 
-## B1. Kiểm tra dữ liệu thô (Inspect Raw Data)
-inspect:
-	@echo "${YELLOW}Inspecting Raw Data...${RESET}"
-	docker exec -it -w /home/spark/work $(SPARK_MASTER) python3 src/ai_core/inspect_data.py
 
 ## B2. Xử lý dữ liệu (Raw JSON -> Dataset.pkl)
-process:
+process_beauty:
 	@echo "${YELLOW}Running Data Processing...${RESET}"
-	docker exec -it -w /home/spark/work $(SPARK_MASTER) python3 src/ai_core/data_process.py
-
+	docker exec -it -w /home/spark/work $(SPARK_MASTER) python3 src/ai_core/spark_process_beauty.py
+process_game:
+	@echo "${YELLOW}Running Data Processing...${RESET}"
+	docker exec -it -w /home/spark/work $(SPARK_MASTER) python3 src/ai_core/spark_process_game.py
 ## B3. Huấn luyện Model (Dataset.pkl -> Model.keras)
 train:
 	@echo "${YELLOW}Running Model Training...${RESET}"
 	docker exec -it -w /home/spark/work $(SPARK_MASTER) python3 src/ai_core/train.py
+
+train_game:
+	@echo "${YELLOW}Running Model Training...${RESET}"
+	docker exec -it -w /home/spark/work $(SPARK_MASTER) python3 src/ai_core/train_game.py
 
 ## B4. Test thử Model sau khi train
 test-ai:
 	@echo "${YELLOW}Testing Trained Model...${RESET}"
 	docker exec -it -w /home/spark/work $(SPARK_MASTER) python3 src/ai_core/test_model.py
 
+eval-ai:
+	@echo "📊 Running Full Evaluation..."
+	# Cài tqdm cho đẹp (nếu chưa có), sau đó chạy evaluate
+	docker exec -it -w /home/spark/work $(SPARK_MASTER) python3 src/ai_core/evaluate.py
+
+eval-game-ai:
+	@echo "📊 Running Full Evaluation..."
+	# Cài tqdm cho đẹp (nếu chưa có), sau đó chạy evaluate
+	docker exec -it -w /home/spark/work $(SPARK_MASTER) python3 src/ai_core/evaluate_game.py
+
+eval-metric:
+	@echo "📊 Running Full Evaluation..."
+	# Cài tqdm cho đẹp (nếu chưa có), sau đó chạy evaluate
+	docker exec -it -w /home/spark/work $(SPARK_MASTER) python3 src/ai_core/evaluate_metrics.py
 # ==============================================================================
 # ⚙️ 3. SETUP DỮ LIỆU & KẾT NỐI (DATA SETUP - RUN ONCE)
 # ==============================================================================
