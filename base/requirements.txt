@@ -45,3 +45,4 @@ seaborn==0.13.2
 confluent-kafka==2.3.0    # Client Kafka xịn hơn kafka-python (hỗ trợ Avro tốt)
 fastavro==1.9.4           # Xử lý file Avro siêu tốc
 avro==1.11.3              # Thư viện chuẩn
+boto3==1.34.0

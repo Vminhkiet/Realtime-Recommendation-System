@@ -8,7 +8,7 @@ from pyspark.ml.feature import StringIndexer
 
 # --- CẤU HÌNH ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.dirname(os.path.dirname(BASE_DIR))
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(BASE_DIR)))
 
 # Đảm bảo trỏ đúng file All_Beauty
 RAW_DATA = os.path.join(PROJECT_ROOT, 'data/raw_source/All_Beauty.jsonl')

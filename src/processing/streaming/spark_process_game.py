@@ -12,7 +12,7 @@ from datetime import datetime
 
 # ================== CONFIG ==================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.dirname(os.path.dirname(BASE_DIR))
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(BASE_DIR)))
 
 RAW_DATA = os.path.join(PROJECT_ROOT, 'data/raw_source/Video_Games.jsonl')
 META_DATA = os.path.join(PROJECT_ROOT, 'data/raw_source/meta_Video_Games.jsonl')
@@ -20,6 +20,8 @@ META_DATA = os.path.join(PROJECT_ROOT, 'data/raw_source/meta_Video_Games.jsonl')
 OUTPUT_PARQUET = os.path.join(PROJECT_ROOT, 'data/model_registry/processed_parquet')
 MAP_OUTPUT = os.path.join(PROJECT_ROOT, 'data/model_registry/item_map.json')
 CAT_MAP_OUTPUT = os.path.join(PROJECT_ROOT, 'data/model_registry/category_map.json')
+# 🔥 [NEW] File map Item->Category dùng cho Inference
+ITEM_CAT_MAP_OUTPUT = os.path.join(PROJECT_ROOT, 'data/model_registry/item_category.json')
 
 MIN_TS = 1514764800  # 2018-01-01
 
@@ -71,6 +73,7 @@ def main():
 
         df_meta = df_meta.withColumn("t_lower", F.lower(F.col("title")))
 
+        # Heuristic Mapping
         df_meta = df_meta.withColumn(
             "category_final",
             F.when(F.col("t_lower").contains("ps5"), "PS5")
@@ -81,17 +84,14 @@ def main():
                 "NintendoSwitch"
             )
             .when(F.col("t_lower").contains("pc") | F.col("t_lower").contains("steam"), "PC_Gaming")
-
             .when(F.col("t_lower").contains("controller"), "Controller")
             .when(F.col("t_lower").contains("headset") | F.col("t_lower").contains("headphone"), "Audio")
             .when(F.col("t_lower").contains("keyboard"), "Keyboard")
             .when(F.col("t_lower").contains("mouse"), "Mouse")
             .when(F.col("t_lower").contains("monitor"), "Monitor")
             .when(F.col("t_lower").contains("cable") | F.col("t_lower").contains("charger"), "Power_Cables")
-
             .when(F.col("t_lower").contains("dlc") | F.col("t_lower").contains("digital code"), "Digital_Content")
             .when(F.col("t_lower").contains("vr") | F.col("t_lower").contains("oculus"), "VR_Gaming")
-
             .otherwise("Other_Gaming")
         )
 
@@ -121,6 +121,7 @@ def main():
 
     df_indexed = cat_indexer.transform(df_indexed)
 
+    # +1 cho Index để dành số 0 cho Padding
     df_indexed = (
         df_indexed
         .withColumn("item_idx", (F.col("item_idx_raw") + 1).cast(IntegerType()))
@@ -183,6 +184,29 @@ def main():
     end_date = datetime.fromtimestamp(normalize(stats["max_ts"]))
 
     print(f"📅 Data range: {start_date} → {end_date}")
+
+    # ========== 9. SAVE ITEM-CATEGORY MAPPING (FOR INFERENCE) ==========
+    # 🔥 [NEW SECTION] Tạo file map Item ID (Int) -> Category ID (Int)
+    print("🗺️ Generating Item-Category Map for Real-time Inference...")
+    
+    # Tách cặp (item, category) duy nhất từ dữ liệu đã xử lý
+    df_map = df_final.select(
+        F.explode(F.arrays_zip("sequence_ids", "category_ids")).alias("pair")
+    ).select(
+        F.col("pair.sequence_ids").alias("item_id"),
+        F.col("pair.category_ids").alias("cat_id")
+    ).distinct()
+
+    # Thu thập về Driver và lưu JSON
+    rows = df_map.collect()
+    # Key là string (để JSON hiểu), Value là int
+    item_cat_map = {str(row["item_id"]): int(row["cat_id"]) for row in rows}
+
+    with open(ITEM_CAT_MAP_OUTPUT, "w") as f:
+        json.dump(item_cat_map, f)
+    
+    print(f"✅ Saved Item-Category Map: {len(item_cat_map)} items")
+
     print("🎉 DONE – TIME-AWARE DATASET READY")
 
     spark.stop()

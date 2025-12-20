@@ -4,8 +4,8 @@ USER root
 
 # Cài các connector
 RUN confluent-hub install --no-prompt confluentinc/kafka-connect-s3:10.5.0 && \
-    confluent-hub install --no-prompt confluentinc/kafka-connect-jdbc:10.7.0
-
+    confluent-hub install --no-prompt confluentinc/kafka-connect-jdbc:10.7.0 && \
+    confluent-hub install --no-prompt mongodb/kafka-connect-mongodb:1.11.0
 # Cài PostgreSQL JDBC driver
 RUN POSTGRES_LIB=/usr/share/confluent-hub-components/confluentinc-kafka-connect-jdbc/lib && \
     mkdir -p $POSTGRES_LIB && \

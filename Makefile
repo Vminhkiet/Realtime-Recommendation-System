@@ -70,10 +70,10 @@ logs:
 ## B2. Xử lý dữ liệu (Raw JSON -> Dataset.pkl)
 process_beauty:
 	@echo "${YELLOW}Running Data Processing...${RESET}"
-	docker exec -it -w /home/spark/work $(SPARK_MASTER) python3 src/ai_core/spark_process_beauty.py
+	docker exec -it -w /home/spark/work $(SPARK_MASTER) python3 src/processing/streaming/spark_process_beauty.py
 process_game:
 	@echo "${YELLOW}Running Data Processing...${RESET}"
-	docker exec -it -w /home/spark/work $(SPARK_MASTER) python3 src/ai_core/spark_process_game.py
+	docker exec -it -w /home/spark/work $(SPARK_MASTER) python3 src/processing/streaming/spark_process_game.py
 ## B3. Huấn luyện Model (Dataset.pkl -> Model.keras)
 train:
 	@echo "${YELLOW}Running Model Training...${RESET}"
@@ -133,6 +133,24 @@ eval-metric:
 # 		-d '{"name": "timescale-sink", "config": {"connector.class": "io.confluent.connect.jdbc.JdbcSinkConnector", "tasks.max": "1", "topics": "user_clicks", "connection.url": "jdbc:postgresql://timescaledb:5432/ecommerce_logs", "connection.user": "postgres", "connection.password": "password", "auto.create": "true", "insert.mode": "insert"}}' || echo "Connector might already exist."
 # 	@echo "\n${GREEN}Setup Completed!${RESET}"
 
+setup-minio-sink:
+	@echo "♻️  Đang gỡ bỏ Connector cũ..."
+	# 1. Xóa Connector cũ (nếu có)
+	@curl -s -X DELETE http://localhost:8083/connectors/sink-minio-processed-parquet || true
+	
+	@echo "⏳ Đợi 3 giây..."
+	@sleep 3
+	
+	@echo "🚀 Đang deploy Connector từ file: connectors/sink_minio.json"
+	# 2. Tạo mới với đúng đường dẫn file bạn yêu cầu
+	@curl -s -X POST http://localhost:8083/connectors \
+		-H "Content-Type: application/json" \
+		-d @connectors/sink_minio.json
+	
+	@echo "\n✅ Setup Completed! Kiểm tra trạng thái:"
+	@sleep 1
+	@curl -s http://localhost:8083/connectors/sink-minio-processed-parquet/status | jq
+
 setup:
 	@echo "${YELLOW}--- 1. Importing Metadata to MongoDB ---${RESET}"
 	# Nạp thông tin sản phẩm (Tên, Giá, Ảnh) vào MongoDB
@@ -174,15 +192,29 @@ sim:
 	# Chạy producer với biến môi trường Kafka nội bộ
 # 	docker exec -it -w /home/spark/work -e KAFKA_SERVER=kafka:29092 $(SPARK_MASTER) python3 src/simulation/main_producer.py
 	docker exec -it spark-master pip install confluent-kafka fastavro requests Faker authlib
-	docker exec -it -w /home/spark/work -e KAFKA_SERVER=kafka:29092 $(SPARK_MASTER) python3 src/simulation/main_producer.py
+	docker exec -it -w /home/spark/work \
+		-e KAFKA_BOOTSTRAP=kafka:29092 \
+		-e SCHEMA_REGISTRY_URL=http://schema-registry:8081 \
+		spark-master python3 src/simulation/avro_producer.py
 
 ## Terminal 2: Chạy Spark Streaming (AI Inference Real-time)
 stream:
 	@echo "${YELLOW}Submitting Spark Streaming Job...${RESET}"
-	docker exec -it -w /home/spark/work $(SPARK_MASTER) spark-submit \
+	docker exec -it -e PYTHONPATH=/home/spark/work -w /home/spark/work spark-master spark-submit \
 		--packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1,org.apache.spark:spark-avro_2.12:3.5.1 \
-		--py-files /home/spark/work/src/processing/streaming/utils.py,/home/spark/work/src/ai_core/model.py \
-		/home/spark/work/src/processing/streaming/inference.py
+		/home/spark/work/src/serving/run_inference.py
+
+streaming:
+	docker exec -it spark-master spark-submit \
+		--master spark://spark-master:7077 \
+		--packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0,org.apache.spark:spark-avro_2.12:3.5.0,org.apache.hadoop:hadoop-aws:3.3.4 \
+		/home/spark/work/src/processing/streaming/feature_engineering.py
+ETL:
+	docker exec -it -w /home/spark/work spark-master bash -c "\
+		pip install boto3 && \
+		spark-submit \
+		--packages org.apache.spark:spark-hadoop-cloud_2.12:3.5.0,org.apache.hadoop:hadoop-aws:3.3.4 \
+		src/processing/batch_etl_minio.py"
 ## Dọn dẹp dữ liệu rác (CẨN THẬN: Xóa sạch Database)
 clean-data: down
 	@echo "${YELLOW}Cleaning all data volumes...${RESET}"

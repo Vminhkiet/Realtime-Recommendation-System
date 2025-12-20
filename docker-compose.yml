@@ -49,7 +49,7 @@ services:
     image: provectuslabs/kafka-ui:latest
     container_name: kafka-ui
     ports:
-      - "8080:8080"
+      - "8090:8080"
     depends_on:
       - kafka
       - schema-registry
@@ -88,13 +88,9 @@ services:
       CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
 
       # Avro converter
-      CONNECT_KEY_CONVERTER: io.confluent.connect.avro.AvroConverter
-      CONNECT_KEY_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:8081
-      CONNECT_VALUE_CONVERTER: io.confluent.connect.avro.AvroConverter
-      CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:8081
-
-      CONNECT_INTERNAL_KEY_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
-      CONNECT_INTERNAL_VALUE_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+      CONNECT_KEY_CONVERTER: "org.apache.kafka.connect.storage.StringConverter"
+      CONNECT_VALUE_CONVERTER: "io.confluent.connect.avro.AvroConverter"
+      CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: "http://schema-registry:8081"
 
       CONNECT_REST_PORT: 8083
 
@@ -151,6 +147,7 @@ services:
       - "5432:5432"
     volumes:
       - ./data/timescale_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/01_init.sql
     networks:
       - spark-kafka-net
 
@@ -168,6 +165,7 @@ services:
     volumes:
       - ./src:/home/spark/work/src
       - ./data:/home/spark/work/data
+      - ./data/ivy_cache:/root/.ivy2
     networks:
       - spark-kafka-net
 
