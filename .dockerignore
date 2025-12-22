@@ -1,0 +1,10 @@
+# Loại bỏ các thư mục dữ liệu nặng và bị khóa quyền
+data/
+infra/timescaledb/
+notebooks/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.git
+.ipynb_checkpoints/

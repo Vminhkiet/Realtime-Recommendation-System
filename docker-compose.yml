@@ -208,12 +208,15 @@ services:
     container_name: dashboard
     user: root
     ports:
-      - "8501:8501"
+      - "8502:8501"
     volumes:
       - ./src:/home/spark/work/src
       - ./data:/home/spark/work/data
     working_dir: /home/spark/work
     environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - DB_HOST=timescaledb
       - KAFKA_SERVER=kafka:29092
       - MONGO_URI=mongodb://mongo:27017/
       - TIMESCALE_URI=postgresql://postgres:password@timescaledb:5432/ecommerce_logs
@@ -221,6 +224,25 @@ services:
     command: >
       bash -c "pip install streamlit pandas matplotlib && 
       streamlit run src/dashboard/app.py --server.port 8501 --server.address 0.0.0.0"
+    networks:
+      - spark-kafka-net
+
+  tf-serving:
+    image: tensorflow/serving:latest
+    container_name: tf-serving
+    ports:
+      - "8500:8500"
+      - "8501:8501"
+    volumes:
+      - ./data/model_registry:/models/sasrec
+      - ./infra/tf-serving/batching_config.txt:/models/batching_config.txt
+    environment:
+      - MODEL_NAME=sasrec
+    command: >
+      --model_name=sasrec
+      --model_base_path=/models/sasrec
+      --enable_batching=true
+      --batching_parameters_file=/models/batching_config.txt
     networks:
       - spark-kafka-net
 

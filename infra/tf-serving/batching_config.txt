@@ -1,0 +1,4 @@
+max_batch_size { value: 32 }             # Gom tối đa 32 users/lần xử lý
+batch_timeout_micros { value: 10000 }    # Đợi tối đa 10ms (0.01s) để gom đủ 32 người
+max_enqueued_batches { value: 100 }      # Hàng chờ tối đa 100 lô trước khi báo bận
+num_batch_threads { value: 4 }           # Sử dụng 4 luồng CPU để xử lý song song

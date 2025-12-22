@@ -1,0 +1,30 @@
+{
+  "name": "sink-timescale-interactions",
+  "config": {
+    "connector.class": "io.confluent.connect.jdbc.JdbcSinkConnector",
+    "tasks.max": "1",
+    "topics": "processed_clicks",
+    "connection.url": "jdbc:postgresql://timescaledb:5432/ecommerce_logs",
+    "connection.user": "postgres",
+    "connection.password": "password",
+    "insert.mode": "insert",
+    "table.name.format": "user_interactions",
+    "pk.mode": "none",
+    "auto.create": "false",
+    "auto.evolve": "false",
+    "value.converter": "io.confluent.connect.avro.AvroConverter",
+    "value.converter.schema.registry.url": "http://schema-registry:8081",
+    "batch.size": "1",
+
+    "transforms": "filterFields,convertTS",
+    
+    "transforms.filterFields.type": "org.apache.kafka.connect.transforms.ReplaceField$Value",
+    "transforms.filterFields.whitelist": "timestamp,user_id,item_id,item_idx,event_type,rating_original",
+    "transforms.filterFields.renames": "rating_original:rating",
+
+    "transforms.convertTS.type": "org.apache.kafka.connect.transforms.TimestampConverter$Value",
+    "transforms.convertTS.field": "timestamp",
+    "transforms.convertTS.target.type": "Timestamp",
+    "transforms.convertTS.format": "yyyy-MM-dd'T'HH:mm:ss.SSSSSS"
+  }
+}

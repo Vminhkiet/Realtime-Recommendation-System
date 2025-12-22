@@ -1,0 +1,22 @@
+version: '3.9'
+
+services:
+  inference-service:
+    build:
+      context: ../..
+      dockerfile: base/serving/Dockerfile
+    container_name: inference-service
+    environment:
+      - KAFKA_SERVER=kafka:29092
+      - REDIS_HOST=redis
+      - SCHEMA_REGISTRY_URL=http://schema-registry:8081
+      - TF_SERVING_URL=http://tf-serving:8501/v1/models/sasrec:predict
+      - PYTHONUNBUFFERED=1
+    restart: on-failure
+    networks:
+      - spark-kafka-net
+
+networks:
+  spark-kafka-net:
+    external: true
+    name: realtime-recommendation-system_spark-kafka-net

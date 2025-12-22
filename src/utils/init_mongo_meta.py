@@ -11,7 +11,7 @@ MONGO_URI = os.getenv("MONGO_URI", "mongodb://mongo:27017/")
 DB_NAME = "ecommerce_db"
 COLLECTION_NAME = "products"
 
-META_FILE_PATH = "data/raw_source/meta_All_Beauty.jsonl"
+META_FILE_PATH = "data/raw_source/meta_Video_Games.jsonl"
 
 
 def load_data():
