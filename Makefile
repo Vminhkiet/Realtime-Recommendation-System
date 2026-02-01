@@ -39,6 +39,7 @@ help:
 
 ## Bật toàn bộ hệ thống (Background mode)
 up:
+	#AIRFLOW_UID=50000 docker-compose up airflow-init
 	@echo "${YELLOW}Starting infrastructure...${RESET}"
 	$(DOCKER_COMPOSE) up -d
 
@@ -78,6 +79,9 @@ process_beauty:
 process_game:
 	@echo "${YELLOW}Running Data Processing...${RESET}"
 	docker exec -it -w /home/spark/work $(SPARK_MASTER) python3 src/processing/streaming/spark_process_game.py
+process_game_1:
+	@echo "${YELLOW}Running Data Processing...${RESET}"
+	docker exec -it -w /home/spark/work $(SPARK_MASTER) python3 src/processing/streaming/check_data.py
 ## B3. Huấn luyện Model (Dataset.pkl -> Model.keras)
 train:
 	@echo "${YELLOW}Running Model Training...${RESET}"
@@ -85,6 +89,7 @@ train:
 
 train_game:
 	@echo "${YELLOW}Running Model Training...${RESET}"
+	docker exec spark-master pip install mlflow tensorflow pandas s3fs
 	docker exec -it -w /home/spark/work $(SPARK_MASTER) python3 src/ai_core/train_game.py
 
 ## B4. Test thử Model sau khi train
@@ -100,12 +105,13 @@ eval-ai:
 eval-game-ai:
 	@echo "📊 Running Full Evaluation..."
 	# Cài tqdm cho đẹp (nếu chưa có), sau đó chạy evaluate
+	docker exec spark-master pip install mlflow tensorflow pandas s3fs
 	docker exec -it -w /home/spark/work $(SPARK_MASTER) python3 src/ai_core/evaluate_game.py
 
 eval-metric:
 	@echo "📊 Running Full Evaluation..."
 	# Cài tqdm cho đẹp (nếu chưa có), sau đó chạy evaluate
-	docker exec -it -w /home/spark/work $(SPARK_MASTER) python3 src/ai_core/evaluate_metrics.py
+	docker exec -it -w /home/spark/work $(SPARK_MASTER) python3 src/ai_core/verify_model_update.py
 
 
 prepare-model:
@@ -115,7 +121,7 @@ prepare-model:
 	@echo "${GREEN}Model prepared successfully in data/model_registry/1/${RESET}"
 
 # Lệnh tổng hợp: Chuyển đổi model và khởi động lại TF Serving
-reload-tf: prepare-model
+reload-tf:
 	@echo "${YELLOW}Restarting TF Serving to load new model version...${RESET}"
 	docker-compose restart tf-serving
 	@echo "${GREEN}TF Serving is reloading. Check logs with: docker logs -f tf-serving${RESET}"
@@ -260,16 +266,23 @@ ETL-TRAIN:
 		pip install boto3 && \
 		spark-submit \
 		--packages org.apache.spark:spark-hadoop-cloud_2.12:3.5.0,org.apache.hadoop:hadoop-aws:3.3.4 \
-		src/processing/batch/batch_etl_train.py"
+		src/processing/batch/batch_etl_train.py 2025-11-1 2025-11-8"
 
 auto-train:
 	@echo "${YELLOW}🚀 Starting Automated Training Pipeline...${RESET}"
 	# Đảm bảo cài đặt các thư viện cần thiết trong container
 	#docker exec -u 0 spark-master pip install tensorflow keras-hub s3fs pymongo pandas
-	# Thực thi script huấn luyện lấy dữ liệu từ Data Lake (MinIO)
-	docker exec -it -w /home/spark/work spark-master spark-submit \
-        --packages org.apache.spark:spark-hadoop-cloud_2.12:3.5.0,org.apache.hadoop:hadoop-aws:3.3.4 \
-        src/utils/debug_view.py
+	#@echo "${YELLOW}Running Model Training...${RESET}"
+	#docker exec -it -w /home/spark/work $(SPARK_MASTER) python3 src/ai_core/auto_train.py
+
+	docker exec spark-master pip install mlflow tensorflow pandas s3fs
+
+	docker exec \
+		-e MLFLOW_TRACKING_URI=http://mlflow:5000 \
+		-e MLFLOW_EXPERIMENT_NAME=auto_train_recsys \
+		-w /home/spark/work \
+		spark-master \
+		python3 src/ai_core/auto_train.py
 	@echo "${GREEN}✅ Training completed. TF Serving will hot-reload the new model version.${RESET}"
 
 up-serving:

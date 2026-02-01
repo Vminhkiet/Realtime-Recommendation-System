@@ -123,16 +123,20 @@ class SasRec(keras.Model):
         
         # Masking
         mask = ops.cast(x["padding_mask"], dtype="float32")
-        
+        loss = loss * mask
         # Time Reweighting (Giữ nguyên từ bước trước)
         seq_len = ops.shape(loss)[1]
         time_weights = tf.range(1, seq_len + 1, dtype=tf.float32)
         time_weights = time_weights / tf.cast(seq_len, dtype=tf.float32)
         time_weights = ops.expand_dims(time_weights, 0)
+
+        loss = loss * time_weights
+        if sample_weight is not None:
+            loss = loss * sample_weight
         
-        loss = loss * mask * time_weights
-        
-        return ops.sum(loss) / (ops.sum(mask * time_weights) + 1e-8)
+        normalization_factor = ops.sum(mask * time_weights) + 1e-8
+
+        return ops.sum(loss) / normalization_factor
 
     def get_config(self):
         return {

@@ -1,57 +1,54 @@
+import pickle
 import os
-from pyspark.sql import SparkSession
-from pyspark.sql import functions as F
+from datetime import datetime
+import statistics
 
-# Config
-MINIO_ENDPOINT = "http://minio:9000"
-ACCESS_KEY = "minioadmin"
-SECRET_KEY = "minioadmin"
-# Đường dẫn gốc
-S3_INPUT = "s3a://datalake/topics/processed_clicks"
+# ĐƯỜNG DẪN
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(os.path.dirname(BASE_DIR))
+TEST_PATH = os.path.join(PROJECT_ROOT, 'data/model_registry/test_set.pkl')
 
 def main():
-    spark = SparkSession.builder \
-        .appName("Debug_View_Raw") \
-        .config("spark.hadoop.fs.s3a.endpoint", MINIO_ENDPOINT) \
-        .config("spark.hadoop.fs.s3a.access.key", ACCESS_KEY) \
-        .config("spark.hadoop.fs.s3a.secret.key", SECRET_KEY) \
-        .config("spark.hadoop.fs.s3a.path.style.access", "true") \
-        .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
-        .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false") \
-        .getOrCreate()
+    print("🕵️ ĐANG QUÉT THỜI GIAN CỦA TEST SET...\n")
 
-    spark.sparkContext.setLogLevel("ERROR")
-    print("🔍 BẮT ĐẦU DEBUG DỮ LIỆU...")
+    if not os.path.exists(TEST_PATH):
+        print("❌ Không tìm thấy file test_set.pkl")
+        return
 
-    try:
-        # 1. Đọc dữ liệu
-        df = spark.read.option("basePath", S3_INPUT) \
-                       .option("mergeSchema", "true") \
-                       .option("recursiveFileLookup", "true") \
-                       .parquet(S3_INPUT)
-        
-        # 2. In ra 20 dòng đầu tiên (Raw Data)
-        print("\n--- 1. MẪU DỮ LIỆU THÔ (TOP 20) ---")
-        # Chỉ chọn các cột quan trọng để hiển thị cho gọn
-        df.select("user_id", "item_id", "timestamp", "item_idx").show(20, truncate=False)
+    with open(TEST_PATH, 'rb') as f:
+        test_set = pickle.load(f)
 
-        # 3. Kiểm tra User ID
-        print("\n--- 2. THỐNG KÊ USER ---")
-        user_counts = df.groupBy("user_id").count()
-        user_counts.show(10, truncate=False)
-        
-        total_rows = df.count()
-        null_users = df.filter(F.col("user_id").isNull()).count()
-        print(f"📊 Tổng số dòng: {total_rows}")
-        print(f"❌ Số dòng bị NULL User ID: {null_users}")
+    # Lấy danh sách timestamp
+    # Lưu ý: test_time có thể là float hoặc int
+    timestamps = []
+    for sample in test_set:
+        ts = sample.get('test_time')
+        if ts:
+            timestamps.append(ts)
 
-        if total_rows > 0 and null_users == total_rows:
-            print("🚨 LỖI LỚN: Toàn bộ User ID đều bị Null/Rỗng! Kiểm tra lại nguồn Kafka/Avro.")
+    if not timestamps:
+        print("⚠️ Không tìm thấy thông tin thời gian trong Test Set.")
+        return
 
-    except Exception as e:
-        print(f"❌ Lỗi: {e}")
+    # Thống kê
+    min_ts = min(timestamps)
+    max_ts = max(timestamps)
+    avg_ts = statistics.mean(timestamps)
 
-    spark.stop()
+    print(f"📊 Tổng số mẫu Test: {len(timestamps)}")
+    print("-" * 40)
+    print(f"🕒 Test cũ nhất (Min) : {datetime.fromtimestamp(min_ts)}")
+    print(f"🕒 Test mới nhất (Max) : {datetime.fromtimestamp(max_ts)}")
+    print(f"🕒 Trung bình (Avg)    : {datetime.fromtimestamp(avg_ts)}")
+    print("-" * 40)
+
+    # Kiểm tra xem có sát ngày giả lập không
+    print("\n💡 NHẬN XÉT CHO BÁO CÁO:")
+    if datetime.fromtimestamp(max_ts).year == 2025:
+        print("✅ Dữ liệu Test ĐÃ KHỚP với kịch bản năm 2025.")
+        print(f"   Simulation của bạn sẽ chạy nối tiếp ngay sau ngày: {datetime.fromtimestamp(max_ts).strftime('%d/%m/%Y')}")
+    else:
+        print("⚠️ Dữ liệu Test chưa khớp năm 2025. Hãy kiểm tra lại bước Hack Time!")
 
 if __name__ == "__main__":
     main()

@@ -1,5 +1,37 @@
 version: '3.9'
 
+# x-airflow-common: &airflow-common
+#   image: airflow-base:2.9.0-custom
+#   build:
+#     context: .
+#     dockerfile: ./infra/airflow/Dockerfile
+#   environment: &airflow-common-env
+#     AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+#     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-db/airflow
+#     AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@airflow-db/airflow
+#     AIRFLOW__CELERY__BROKER_URL: redis://:@redis:6379/0
+
+#     # 🔐 FERNET KEY (LẤY TỪ .env)
+#     AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
+
+#     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+#     AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+#     AIRFLOW__API__AUTH_BACKENDS: airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session
+
+#     TZ: Asia/Ho_Chi_Minh
+#     AIRFLOW__CORE__DEFAULT_TIMEZONE: Asia/Ho_Chi_Minh
+
+#   volumes:
+#     - ./dags:/opt/airflow/dags
+#     - ./logs:/opt/airflow/logs
+#     - ./plugins:/opt/airflow/plugins
+#     - ./src:/opt/airflow/src
+#     - ./data:/opt/airflow/data
+#     - /var/run/docker.sock:/var/run/docker.sock
+
+#   networks:
+#     - spark-kafka-net
+
 services:
   # =========================================
   # 1. HẠ TẦNG MESSAGING & GOVERNANCE
@@ -108,6 +140,11 @@ services:
       - "6379:6379"
     volumes:
       - ./data/redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - spark-kafka-net
 
@@ -143,11 +180,42 @@ services:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=password
       - POSTGRES_DB=ecommerce_logs
-    ports:
-      - "5432:5432"
     volumes:
       - ./data/timescale_data:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/01_init.sql
+    networks:
+      - spark-kafka-net
+
+  mlflow-db:
+    image: postgres:14
+    container_name: mlflow-db
+    environment:
+      POSTGRES_USER: mlflow
+      POSTGRES_PASSWORD: mlflow
+      POSTGRES_DB: mlflow
+    volumes:
+      - ./data/mlflow_pg:/var/lib/postgresql/data
+    networks:
+      - spark-kafka-net
+
+  mlflow:
+    build: ./infra/mlflow
+    container_name: mlflow
+    depends_on:
+      - mlflow-db
+      - minio
+    environment:
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+    command: >
+      mlflow server
+      --backend-store-uri postgresql://mlflow:mlflow@mlflow-db:5432/mlflow
+      --default-artifact-root s3://mlflow
+      --host 0.0.0.0
+      --port 5000
+    ports:
+      - "5000:5000"
     networks:
       - spark-kafka-net
 
@@ -166,6 +234,11 @@ services:
       - ./src:/home/spark/work/src
       - ./data:/home/spark/work/data
       - ./data/ivy_cache:/root/.ivy2
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 5G
     networks:
       - spark-kafka-net
 
@@ -176,27 +249,11 @@ services:
       - spark-master
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
     environment:
-      SPARK_WORKER_MEMORY: 1G
+      SPARK_WORKER_MEMORY: 2G
       SPARK_WORKER_CORES: 1
     volumes:
       - ./src:/home/spark/work/src
       - ./data:/home/spark/work/data
-    networks:
-      - spark-kafka-net
-
-  jupyter-spark:
-    build: ./base
-    container_name: jupyter-spark
-    user: root
-    ports:
-      - "8888:8888"
-      - "4040:4040"
-    volumes:
-      - ./notebooks:/home/spark/work/notebooks
-      - ./src:/home/spark/work/src
-      - ./data:/home/spark/work/data
-    environment:
-      - SPARK_MASTER=spark://spark-master:7077
     networks:
       - spark-kafka-net
 
@@ -245,7 +302,107 @@ services:
       --batching_parameters_file=/models/batching_config.txt
     networks:
       - spark-kafka-net
+  # =========================================
+  # 6. AIRFLOW ORCHESTRATION
+  # =========================================
+  # airflow-db:
+  #   image: postgres:13
+  #   container_name: airflow-db
+  #   environment:
+  #     POSTGRES_USER: airflow
+  #     POSTGRES_PASSWORD: airflow
+  #     POSTGRES_DB: airflow
+  #   volumes:
+  #     - airflow-db-volume:/var/lib/postgresql/data
+  #   healthcheck:
+  #     test: ["CMD", "pg_isready", "-U", "airflow"]
+  #     interval: 10s
+  #     retries: 5
+  #   networks:
+  #     - spark-kafka-net
 
+  # # ================= AIRFLOW INIT =================
+  # airflow-init:
+  #   <<: *airflow-common
+  #   container_name: airflow-init
+  #   entrypoint: /bin/bash
+  #   command:
+  #     - -c
+  #     - |
+  #       airflow db migrate
+
+  #       airflow users create \
+  #         --username ${AIRFLOW_ADMIN_USER} \
+  #         --password ${AIRFLOW_ADMIN_PASSWORD} \
+  #         --firstname Airflow \
+  #         --lastname Admin \
+  #         --role Admin \
+  #         --email admin@example.com
+  #   depends_on:
+  #     airflow-db:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+
+  # # ================= AIRFLOW CORE =================
+  # airflow-webserver:
+  #   <<: *airflow-common
+  #   container_name: airflow-webserver
+  #   command: webserver
+  #   ports:
+  #     - "8080:8080"
+  #   depends_on:
+  #     airflow-init:
+  #       condition: service_completed_successfully
+  #   healthcheck:
+  #     test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+  #     interval: 30s
+  #     retries: 5
+
+  # airflow-scheduler:
+  #   <<: *airflow-common
+  #   container_name: airflow-scheduler
+  #   command: scheduler
+  #   depends_on:
+  #     airflow-init:
+  #       condition: service_completed_successfully
+
+  # airflow-worker:
+  #   <<: *airflow-common
+  #   container_name: airflow-worker
+  #   command: celery worker
+  #   depends_on:
+  #     airflow-init:
+  #       condition: service_completed_successfully
+
+  # airflow-triggerer:
+  #   <<: *airflow-common
+  #   container_name: airflow-triggerer
+  #   command: triggerer
+  #   depends_on:
+  #     airflow-init:
+  #       condition: service_completed_successfully
+
+  # # =========================================
+  # # MONITORING (GRAFANA)
+  # # =========================================
+  # grafana:
+  #   image: grafana/grafana:latest
+  #   container_name: grafana
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     - GF_SECURITY_ADMIN_USER=admin
+  #     - GF_SECURITY_ADMIN_PASSWORD=admin
+  #     - GF_USERS_ALLOW_SIGN_UP=false
+  #   volumes:
+  #     - grafana_data:/var/lib/grafana
+  #   networks:
+  #     - spark-kafka-net
 networks:
   spark-kafka-net:
     driver: bridge
+
+# volumes:
+#   airflow-db-volume:
+#   grafana_data:

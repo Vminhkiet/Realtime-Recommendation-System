@@ -6,6 +6,8 @@ services:
       context: ../..
       dockerfile: base/serving/Dockerfile
     container_name: inference-service
+    volumes:
+      - ../../src/serving:/app
     environment:
       - KAFKA_SERVER=kafka:29092
       - REDIS_HOST=redis

@@ -8,43 +8,35 @@
     "s3.region": "us-east-1",
     "s3.bucket.name": "datalake",
     "s3.part.size": "5242880",
-    
     "store.url": "http://minio:9000",
     "storage.class": "io.confluent.connect.s3.storage.S3Storage",
-    
     "format.class": "io.confluent.connect.s3.format.parquet.ParquetFormat",
     "parquet.codec": "snappy",
-    
     "aws.access.key.id": "minioadmin",
     "aws.secret.access.key": "minioadmin",
-
+    
     "value.converter": "io.confluent.connect.avro.AvroConverter",
     "value.converter.schema.registry.url": "http://schema-registry:8081",
     "value.converter.schemas.enable": "true",
-
+    
     "flush.size": "1",
     "rotate.interval.ms": "10000",
-
+    
     "partitioner.class": "io.confluent.connect.storage.partitioner.TimeBasedPartitioner",
     "path.format": "'year'=YYYY/'month'=MM/'day'=dd/'hour'=HH",
     "partition.duration.ms": "3600000",
     "locale": "en-US",
     "timezone": "Asia/Ho_Chi_Minh",
-
-    "# --- PHẦN QUAN TRỌNG ĐÃ SỬA ---": "",
     
-    "# 1. Bảo Connector lấy thời gian từ trường trong bản tin": "",
     "timestamp.extractor": "RecordField",
     "timestamp.field": "timestamp",
-
-    "# 2. Sử dụng Transform để chuyển String 'timestamp' -> Date object": "",
+    
     "transforms": "ParseTimestamp",
     "transforms.ParseTimestamp.type": "org.apache.kafka.connect.transforms.TimestampConverter$Value",
     "transforms.ParseTimestamp.field": "timestamp",
     "transforms.ParseTimestamp.target.type": "Timestamp",
     
-    "# 3. Định dạng ngày tháng khớp với dữ liệu đầu vào (ISO 8601)": "",
-    "# Nếu data là '2025-12-23T10:15:30.123456', dùng format này:": "",
-    "transforms.ParseTimestamp.format": "yyyy-MM-dd'T'HH:mm:ss.SSSSSS"
+    "# 🔥 SỬA DÒNG NÀY: Bỏ phần .SSSSSS đi 🔥": "",
+    "transforms.ParseTimestamp.format": "yyyy-MM-dd'T'HH:mm:ss"
   }
 }

@@ -25,6 +25,6 @@
     "transforms.convertTS.type": "org.apache.kafka.connect.transforms.TimestampConverter$Value",
     "transforms.convertTS.field": "timestamp",
     "transforms.convertTS.target.type": "Timestamp",
-    "transforms.convertTS.format": "yyyy-MM-dd'T'HH:mm:ss.SSSSSS"
+    "transforms.convertTS.format": "yyyy-MM-dd'T'HH:mm:ss"
   }
 }
